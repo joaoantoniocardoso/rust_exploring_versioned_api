@@ -1,25 +1,21 @@
+use aversion::{self, FromVersion};
 
-use serde_json::json;
-use obake;
-
-#[obake::versioned]
-#[obake(version("0.1.0"))]
-#[obake(version("0.2.0"))]
-#[obake(version("0.3.0"))]
-#[obake(derive(serde::Serialize, serde::Deserialize))]
-#[obake(serde(untagged))]
-#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-struct Character {
-    name: String,
-    age: u32,
-    #[obake(cfg(">=0.2.0"))]
-    height: f32,
-    #[obake(cfg(">=0.3.0"))]
-    weight: f32,
+#[derive(Debug, Default, PartialEq, serde::Deserialize, aversion::Versioned)]
+struct CharacterV1 {
+    pub name: String,
+    pub age: u32,
 }
 
-impl From<Character!["0.1.0"]> for Character!["0.2.0"] {
-    fn from(old: Character!["0.1.0"]) -> Self {
+#[derive(Debug, Default, PartialEq, serde::Deserialize, aversion::Versioned)]
+struct CharacterV2 {
+    pub name: String,
+    pub age: u32,
+    pub height: f32,
+}
+
+
+impl FromVersion<CharacterV1> for CharacterV2 {
+    fn from_version(old: CharacterV1) -> Self {
         Self {
             name: old.name,
             age: old.age,
@@ -28,8 +24,16 @@ impl From<Character!["0.1.0"]> for Character!["0.2.0"] {
     }
 }
 
-impl From<Character!["0.2.0"]> for Character!["0.3.0"] {
-    fn from(old: Character!["0.2.0"]) -> Self {
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize, aversion::Versioned, aversion::UpgradeLatest)]
+struct CharacterV3 {
+    pub name: String,
+    pub age: u32,
+    pub height: f32,
+    pub weight: f32,
+}
+
+impl FromVersion<CharacterV2> for CharacterV3 {
+    fn from_version(old: CharacterV2) -> Self {
         Self {
             name: old.name,
             age: old.age,
@@ -39,7 +43,26 @@ impl From<Character!["0.2.0"]> for Character!["0.3.0"] {
     }
 }
 
+type Character = CharacterV3;
+
 fn main() {}
+
+// There must be a way to generate this or a simmilar parser automatically
+fn character_parser(serialized_data: &String) -> Character {
+    if let Ok(data) = serde_json::from_str::<CharacterV3>(&serialized_data) {
+        return Character::from_version(data);
+    }
+
+    if let Ok(data) = serde_json::from_str::<CharacterV2>(&serialized_data) {
+        return Character::from_version(data);
+    }
+
+    if let Ok(data) = serde_json::from_str::<CharacterV1>(&serialized_data) {
+        return Character::from_version(data);
+    }
+
+    return Character::default();
+}
 
 #[cfg(test)]
 mod tests {
@@ -55,8 +78,7 @@ mod tests {
         })).unwrap();
         dbg!(&freeza_ser);
 
-        let freeza: VersionedCharacter = serde_json::from_str(&freeza_ser).unwrap();
-        let freeza: Character = freeza.into();
+        let freeza: Character = character_parser(&freeza_ser);
         dbg!(&freeza);
 
         let freeza_expected = Character {
@@ -76,8 +98,7 @@ mod tests {
         })).unwrap();
         dbg!(&goku_ser);
 
-        let goku: VersionedCharacter = serde_json::from_str(&goku_ser).unwrap();
-        let goku: Character = goku.into();
+        let goku: Character = character_parser(&goku_ser);
         dbg!(&goku);
 
         let goku_expected = Character {
