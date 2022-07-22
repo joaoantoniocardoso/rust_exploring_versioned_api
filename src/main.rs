@@ -1,21 +1,22 @@
 
 use serde_json::json;
+use serde::{Deserialize, Serialize};
 use obake;
 
 #[obake::versioned]
 #[obake(version("0.1.0"))]
 #[obake(version("0.2.0"))]
 #[obake(version("0.3.0"))]
-#[obake(derive(serde::Serialize, serde::Deserialize))]
+#[obake(derive(Debug, Clone, Serialize, Deserialize))]
 #[obake(serde(untagged))]
-#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-struct Character {
-    name: String,
-    age: u32,
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Character {
+    pub name: String,
+    pub age: u32,
     #[obake(cfg(">=0.2.0"))]
-    height: f32,
+    pub height: f32,
     #[obake(cfg(">=0.3.0"))]
-    weight: f32,
+    pub weight: f32,
 }
 
 impl From<Character!["0.1.0"]> for Character!["0.2.0"] {
@@ -39,6 +40,28 @@ impl From<Character!["0.2.0"]> for Character!["0.3.0"] {
     }
 }
 
+// There must be a way to generate this or a simmilar parser automatically
+fn character_parser(serialized_data: &String) -> Character {
+    if let Ok(data) = serde_json::from_str::<Character!["0.3.0"]>(&serialized_data) {
+        return data;
+    }
+
+    if let Ok(data) = serde_json::from_str::<Character!["0.2.0"]>(&serialized_data) {
+        let data: Character!["0.3.0"] = data.into();
+        return data.into();
+    }
+
+    if let Ok(data) = serde_json::from_str::<Character!["0.1.0"]>(&serialized_data) {
+        let data: Character!["0.2.0"] = data.into();
+        let data: Character!["0.3.0"] = data.into();
+        return data;
+    }
+
+    return Character::default();
+}
+
+
+
 fn main() {}
 
 #[cfg(test)]
@@ -55,8 +78,7 @@ mod tests {
         })).unwrap();
         dbg!(&freeza_ser);
 
-        let freeza: VersionedCharacter = serde_json::from_str(&freeza_ser).unwrap();
-        let freeza: Character = freeza.into();
+        let freeza: Character = character_parser(&freeza_ser);
         dbg!(&freeza);
 
         let freeza_expected = Character {
@@ -76,8 +98,7 @@ mod tests {
         })).unwrap();
         dbg!(&goku_ser);
 
-        let goku: VersionedCharacter = serde_json::from_str(&goku_ser).unwrap();
-        let goku: Character = goku.into();
+        let goku: Character = character_parser(&goku_ser);
         dbg!(&goku);
 
         let goku_expected = Character {
